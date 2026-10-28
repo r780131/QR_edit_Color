@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>常用商品條碼與 QR Code 列印工具</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- QRCode.js Library CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- html2canvas CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <!-- jsPDF CDN for multi-page PDF generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- FontAwesome Icons CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            appbg: '#f3f4f0',
+            forest: {
+              700: '#1f4e3d',
+              800: '#173c2f',
+              50: '#eef4f1'
+            },
+            cardborder: '#e2e5df',
+            btnlight: '#f0f2ef'
+          }
+        }
+      }
+    }
+  </script>
+
+  <style id="dynamicPrintStyle">
+    @page {
+      size: A4 portrait;
+      margin: 0;
+    }
+  </style>
+
+  <style>
+    body {
+      background-color: #f3f4f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #333333;
+    }
+
+    /* Print styles */
+    @media print {
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      body {
+        background: #ffffff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .print-container {
+        display: block !important;
+      }
+      .print-page {
+        margin: 0 !important;
+        padding: 8mm !important;
+        box-shadow: none !important;
+        border: none !important;
+        box-sizing: border-box !important;
+        page-break-after: always;
+        page-break-inside: avoid;
+        overflow: hidden !important;
+      }
+    }
+  </style>
+</head>
+<body class="pb-16 pt-4">
+
+  <!-- 頂部提示區塊 -->
+  <div class="no-print max-w-3xl mx-auto px-4 mb-4">
+    <div class="bg-[#eef2ed] border border-[#dce3da] rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-gray-700 shadow-sm">
+      <p class="leading-relaxed text-xs sm:text-sm">
+        Android 首次請連網開啟，看到「離線已就緒」後再新增到主畫面。這是離線網頁 App，不是原生 APK。
+      </p>
+      <button onclick="showNotice('請點擊瀏覽器選單 (三點圖示或分享按鈕)，選擇「新增至主畫面」即可離線使用！')" 
+              class="bg-forest-700 hover:bg-forest-800 text-white px-4 py-2 rounded-xl font-medium text-xs sm:text-sm shrink-0 transition shadow-sm">
+        安裝到手機
+      </button>
+    </div>
+  </div>
+
+  <div class="max-w-3xl mx-auto px-4 space-y-5">
+
+    <!-- 區塊 01: 商品清單 -->
+    <div class="no-print bg-white rounded-2xl shadow-sm border border-cardborder p-4 sm:p-6">
+      <!-- 標題列 -->
+      <div class="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-gray-400 font-mono border border-gray-200 px-2 py-0.5 rounded-md bg-gray-50">01</span>
+          <h2 class="text-base sm:text-lg font-bold text-gray-800">商品清單</h2>
+          <span id="itemCountBadge" class="bg-gray-100 text-gray-600 text-xs px-2.5 py-0.5 rounded-full font-medium">0 項</span>
+        </div>
+        <button onclick="toggleBatchEdit()" class="text-xs sm:text-sm text-forest-700 hover:underline font-medium">
+          批次編輯
+        </button>
+      </div>
+
+      <!-- 匯入 / 匯出 按鈕 -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-4">
+        <label class="cursor-pointer bg-btnlight hover:bg-[#e4e8e3] text-gray-700 border border-gray-200 rounded-xl py-2 text-center text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-sm">
+          <i class="fa-solid fa-file-import text-xs text-gray-600"></i> 匯入 TXT
+          <input type="file" id="importTxtInput" accept=".txt" class="hidden" onchange="importTXT(event)">
+        </label>
+        <button onclick="exportTXT('simple')" class="bg-btnlight hover:bg-[#e4e8e3] text-gray-700 border border-gray-200 rounded-xl py-2 text-center text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-sm" title="僅匯出 商品名稱_編號">
+          <i class="fa-solid fa-file-lines text-xs text-gray-500"></i> 匯出純文字 (.txt)
+        </button>
+        <button onclick="exportTXT('full')" class="bg-forest-50 hover:bg-forest-100 text-forest-700 border border-forest-700/20 rounded-xl py-2 text-center text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-sm" title="匯出商品名稱、編號、底色與邊框完整設定">
+          <i class="fa-solid fa-floppy-disk text-xs"></i> 匯出完整備份 (含色彩)
+        </button>
+      </div>
+
+      <!-- 門市標籤 -->
+      <div class="bg-[#f7f8f6] border border-gray-100 rounded-xl p-3 flex items-center justify-between text-xs text-gray-500 mb-4">
+        <span class="flex items-center gap-2 font-medium">
+          <i class="fa-regular fa-folder text-gray-400"></i> 門市常用
+        </span>
+        <span class="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px] font-medium">已儲存</span>
+      </div>
+
+      <!-- 批次編輯對話框 (預設隱藏) -->
+      <div id="batchEditContainer" class="hidden mb-4 bg-gray-50 p-3 rounded-xl border border-gray-200">
+        <p class="text-xs text-gray-500 mb-2">每行格式：<span class="font-mono font-bold text-gray-700">商品名稱_編號</span> 或 <span class="font-mono font-bold text-gray-700">商品名稱_編號_底色_邊框色</span></p>
+        <textarea id="batchEditTextarea" rows="8" class="w-full border border-gray-300 rounded-xl p-3 text-xs font-mono focus:ring-2 focus:ring-forest-700 focus:outline-none"></textarea>
+        <div class="flex justify-end gap-2 mt-2">
+          <button onclick="toggleBatchEdit()" class="px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 rounded-lg">取消</button>
+          <button onclick="saveBatchEdit()" class="px-4 py-1.5 text-xs bg-forest-700 hover:bg-forest-800 text-white rounded-lg">套用並儲存</button>
+        </div>
+      </div>
+
+      <!-- 清單 Header -->
+      <div class="grid grid-cols-12 gap-2 text-xs font-medium text-gray-400 pb-2 px-1 border-b border-gray-100 items-center">
+        <div class="col-span-4">商品名稱</div>
+        <div class="col-span-4">編號 / QR 內容</div>
+        <div class="col-span-3 text-center">色彩 (底色 / 邊框)</div>
+        <div class="col-span-1 text-center">刪除</div>
+      </div>
+
+      <!-- 商品動態列表 -->
+      <div id="productList" class="space-y-1.5 max-h-80 overflow-y-auto my-2 pr-1">
+        <!-- 由 JS 動態繪製 -->
+      </div>
+
+      <!-- 新增品項列 -->
+      <div class="pt-3 border-t border-gray-100 grid grid-cols-12 gap-2 items-center">
+        <input type="text" id="newName" placeholder="商品名稱" class="col-span-4 border border-gray-200 rounded-xl px-2.5 py-2 text-xs focus:outline-none focus:border-forest-700 bg-gray-50/50">
+        <input type="text" id="newCode" placeholder="編號" class="col-span-4 border border-gray-200 rounded-xl px-2.5 py-2 text-xs focus:outline-none focus:border-forest-700 bg-gray-50/50" onkeyup="if(event.key==='Enter') addItem()">
+        <div class="col-span-3 flex items-center justify-center gap-1">
+          <input type="color" id="newBgColor" value="#ffffff" title="自訂底色" onchange="document.getElementById('newBgColorHex').value=this.value.toUpperCase()" class="w-5 h-5 rounded cursor-pointer border border-gray-200 p-0.5">
+          <input type="text" id="newBgColorHex" value="#FFFFFF" onfocus="this.select()" oninput="syncNewColor('newBgColor', this.value)" class="w-14 border border-gray-200 rounded px-1 py-0.5 text-[10px] font-mono uppercase bg-white text-center focus:outline-none focus:border-forest-700" title="底色 HEX 碼">
+          <input type="color" id="newBorderColor" value="#d1d5db" title="自訂邊框色" onchange="document.getElementById('newBorderColorHex').value=this.value.toUpperCase()" class="w-5 h-5 rounded cursor-pointer border border-gray-200 p-0.5">
+          <input type="text" id="newBorderColorHex" value="#D1D5DB" onfocus="this.select()" oninput="syncNewColor('newBorderColor', this.value)" class="w-14 border border-gray-200 rounded px-1 py-0.5 text-[10px] font-mono uppercase bg-white text-center focus:outline-none focus:border-forest-700" title="邊框 HEX 碼">
+        </div>
+        <button onclick="addItem()" class="col-span-1 bg-[#eef2ed] hover:bg-forest-50 text-forest-700 font-bold rounded-xl py-2 text-base transition flex items-center justify-center">
+          +
+        </button>
+      </div>
+
+      <!-- 底部提醒與還原 -->
+      <div class="mt-4 flex items-center justify-between text-xs text-gray-400 pt-2 border-t border-gray-50">
+        <span>編號填寫數字，QR 內容取 _ 後編號</span>
+        <button onclick="resetDefaults()" class="text-gray-400 hover:text-red-500 underline transition">還原預設</button>
+      </div>
+    </div>
+
+    <!-- 區塊 02: 排版與預覽 -->
+    <div class="bg-white rounded-2xl shadow-sm border border-cardborder p-4 sm:p-6">
+      <!-- 標題列 -->
+      <div class="no-print flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-gray-400 font-mono border border-gray-200 px-2 py-0.5 rounded-md bg-gray-50">02</span>
+          <h2 class="text-base sm:text-lg font-bold text-gray-800">排版與預覽</h2>
+        </div>
+        <span class="text-xs text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full font-medium flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          即時預覽
+        </span>
+      </div>
+
+      <!-- 排版選項控制 -->
+      <div class="no-print grid grid-cols-2 sm:grid-cols-6 gap-2.5 sm:gap-3 mb-3">
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">紙張尺寸</label>
+          <select id="paperSize" onchange="renderPreview()" class="w-full border border-gray-200 rounded-xl p-2 text-xs focus:outline-none focus:border-forest-700 bg-white">
+            <option value="a5">A5 · 148 × 210 mm</option>
+            <option value="a4" selected>A4 · 210 × 297 mm</option>
+            <option value="a3">A3 · 297 × 420 mm</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">方向</label>
+          <select id="orientation" onchange="renderPreview()" class="w-full border border-gray-200 rounded-xl p-2 text-xs focus:outline-none focus:border-forest-700 bg-white">
+            <option value="portrait" selected>直式</option>
+            <option value="landscape">橫式</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">每頁欄數</label>
+          <select id="colsCount" onchange="renderPreview()" class="w-full border border-gray-200 rounded-xl p-2 text-xs focus:outline-none focus:border-forest-700 bg-white">
+            <option value="1">1 欄</option>
+            <option value="2">2 欄</option>
+            <option value="3">3 欄</option>
+            <option value="4">4 欄</option>
+            <option value="5" selected>5 欄</option>
+            <option value="6">6 欄</option>
+            <option value="7">7 欄</option>
+            <option value="8">8 欄</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">每頁排數</label>
+          <select id="rowsCount" onchange="renderPreview()" class="w-full border border-gray-200 rounded-xl p-2 text-xs focus:outline-none focus:border-forest-700 bg-white">
+            <option value="2">2 排</option>
+            <option value="3">3 排</option>
+            <option value="4">4 排</option>
+            <option value="5">5 排</option>
+            <option value="6">6 排</option>
+            <option value="8">8 排</option>
+            <option value="10" selected>10 排</option>
+            <option value="12">12 排</option>
+            <option value="14">14 排</option>
+            <option value="15">15 排</option>
+            <option value="16">16 排</option>
+            <option value="20">20 排</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">字級大小</label>
+          <select id="fontSize" onchange="renderPreview()" class="w-full border border-gray-200 rounded-xl p-2 text-xs focus:outline-none focus:border-forest-700 bg-white">
+            <option value="9pt">9 pt (極小)</option>
+            <option value="10pt">10 pt (小)</option>
+            <option value="11pt">11 pt</option>
+            <option value="12pt" selected>12 pt (標準)</option>
+            <option value="14pt">14 pt (大)</option>
+            <option value="16pt">16 pt (特大)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">邊框樣式</label>
+          <select id="borderStyleSelect" onchange="renderPreview()" class="w-full border border-gray-200 rounded-xl p-2 text-xs focus:outline-none focus:border-forest-700 bg-white">
+            <option value="dashed" selected>虛線格線</option>
+            <option value="solid">實線邊框</option>
+            <option value="none">無邊框</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 全局色彩控制 -->
+      <div class="no-print bg-[#f7f8f6] border border-gray-200/80 rounded-xl p-3 mb-4 space-y-2 text-xs">
+        <!-- 底色批次設定 -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-gray-600 font-medium shrink-0">全頁預設底色：</span>
+            <input type="color" id="globalBgColor" value="#ffffff" onchange="syncGlobalColor('Bg', this.value)" class="w-6 h-6 rounded border border-gray-300 cursor-pointer p-0.5">
+            <input type="text" id="globalBgColorHex" value="#FFFFFF" onfocus="this.select()" oninput="handleGlobalHexInput('Bg', this.value)" class="w-16 border border-gray-200 rounded px-1.5 py-0.5 text-[11px] font-mono uppercase bg-white text-center focus:outline-none focus:border-forest-700" placeholder="#FFFFFF" title="點擊自動全選，可直接複製或貼上 HEX 色號">
+            <div class="flex items-center gap-1 shrink-0">
+              <button onclick="setGlobalBg('#ffffff')" class="w-4 h-4 rounded border border-gray-300 bg-white" title="白底"></button>
+              <button onclick="setGlobalBg('#fef2f2')" class="w-4 h-4 rounded border border-red-200 bg-red-50" title="淡紅"></button>
+              <button onclick="setGlobalBg('#f0fdf4')" class="w-4 h-4 rounded border border-green-200 bg-green-50" title="淡綠"></button>
+              <button onclick="setGlobalBg('#eff6ff')" class="w-4 h-4 rounded border border-blue-200 bg-blue-50" title="淡藍"></button>
+              <button onclick="setGlobalBg('#fefce8')" class="w-4 h-4 rounded border border-yellow-200 bg-yellow-50" title="淡黃"></button>
+              <button onclick="setGlobalBg('#faf5ff')" class="w-4 h-4 rounded border border-purple-200 bg-purple-50" title="淡紫"></button>
+            </div>
+            <button onclick="copyColorCode(document.getElementById('globalBgColor').value)" class="text-gray-400 hover:text-gray-600 px-1.5 py-0.5 border border-gray-200 rounded bg-white" title="複製色號">
+              <i class="fa-regular fa-copy text-[10px]"></i> 複製
+            </button>
+          </div>
+          <button onclick="applyBgToAll()" class="bg-forest-50 hover:bg-forest-100 text-forest-700 px-2.5 py-1 rounded-lg font-medium transition border border-forest-700/20 text-right sm:text-left">
+            <i class="fa-solid fa-paint-roller text-[10px] mr-1"></i>套用到所有商品底色
+          </button>
+        </div>
+
+        <!-- 邊框批次設定 -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-gray-200/50">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-gray-600 font-medium shrink-0">全頁預設邊框：</span>
+            <input type="color" id="globalBorderColor" value="#d1d5db" onchange="syncGlobalColor('Border', this.value)" class="w-6 h-6 rounded border border-gray-300 cursor-pointer p-0.5">
+            <input type="text" id="globalBorderColorHex" value="#D1D5DB" onfocus="this.select()" oninput="handleGlobalHexInput('Border', this.value)" class="w-16 border border-gray-200 rounded px-1.5 py-0.5 text-[11px] font-mono uppercase bg-white text-center focus:outline-none focus:border-forest-700" placeholder="#D1D5DB" title="點擊自動全選，可直接複製或貼上 HEX 色號">
+            <div class="flex items-center gap-1 shrink-0">
+              <button onclick="setGlobalBorder('#d1d5db')" class="w-4 h-4 rounded border border-gray-400 bg-gray-300" title="灰色"></button>
+              <button onclick="setGlobalBorder('#1f4e3d')" class="w-4 h-4 rounded bg-forest-700" title="森林綠"></button>
+              <button onclick="setGlobalBorder('#ef4444')" class="w-4 h-4 rounded bg-red-500" title="鮮紅"></button>
+              <button onclick="setGlobalBorder('#3b82f6')" class="w-4 h-4 rounded bg-blue-500" title="藍色"></button>
+              <button onclick="setGlobalBorder('#111827')" class="w-4 h-4 rounded bg-gray-900" title="深黑"></button>
+            </div>
+            <button onclick="copyColorCode(document.getElementById('globalBorderColor').value)" class="text-gray-400 hover:text-gray-600 px-1.5 py-0.5 border border-gray-200 rounded bg-white" title="複製色號">
+              <i class="fa-regular fa-copy text-[10px]"></i> 複製
+            </button>
+          </div>
+          <button onclick="applyBorderToAll()" class="bg-forest-50 hover:bg-forest-100 text-forest-700 px-2.5 py-1 rounded-lg font-medium transition border border-forest-700/20 text-right sm:text-left">
+            <i class="fa-solid fa-border-all text-[10px] mr-1"></i>套用到所有商品邊框
+          </button>
+        </div>
+      </div>
+
+      <!-- 預覽容器 (含手機自動縮放層) -->
+      <div class="bg-[#eaede8] p-2 sm:p-5 rounded-2xl border border-gray-200">
+        <div class="no-print flex items-center justify-between text-xs text-gray-500 mb-2 font-mono px-1">
+          <span id="canvasInfo">A4 直式</span>
+          <span id="scaleRatioText">視窗自適應 100%</span>
+        </div>
+
+        <!-- 外層縮放容器 -->
+        <div id="previewScaleContainer" class="flex justify-center overflow-hidden">
+          <div id="previewScaleOuter" class="origin-top transition-transform duration-100">
+            <!-- 實際預覽畫布 -->
+            <div id="previewSheet" class="bg-white shadow-lg rounded border border-gray-300 overflow-hidden box-border" style="width: 210mm; height: 297mm; padding: 8mm;">
+              <div id="previewGrid" class="grid h-full w-full overflow-hidden"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 分頁控制 -->
+        <div class="no-print flex items-center justify-center gap-4 mt-4 text-xs text-gray-600 font-medium">
+          <button onclick="changePage(-1)" class="p-1.5 hover:text-black disabled:opacity-30" id="prevPageBtn"><i class="fa-solid fa-chevron-left"></i></button>
+          <span id="pageIndicator" class="font-mono">第 1/1 頁</span>
+          <button onclick="changePage(1)" class="p-1.5 hover:text-black disabled:opacity-30" id="nextPageBtn"><i class="fa-solid fa-chevron-right"></i></button>
+        </div>
+      </div>
+
+      <!-- 底部按鈕欄 -->
+      <div class="no-print mt-5 pt-4 border-t border-gray-100">
+        <div id="totalSummary" class="text-xs text-gray-500 mb-3 font-medium">
+          0 個條碼 · 1 張紙
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="flex items-center gap-1.5 border border-gray-300 rounded-xl px-2.5 bg-white shadow-sm">
+            <span class="text-xs text-gray-400 whitespace-nowrap"><i class="fa-solid fa-file-export text-gray-500 mr-1"></i>格式</span>
+            <select id="exportFormat" class="w-full py-2.5 text-xs text-gray-700 font-medium focus:outline-none bg-transparent">
+              <option value="png" selected>PNG 圖片 (.png)</option>
+              <option value="jpg">JPG 圖片 (.jpg)</option>
+              <option value="pdf">高清文件 (.pdf)</option>
+            </select>
+          </div>
+          <button id="downloadBtn" onclick="downloadFile()" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2.5 rounded-xl transition flex items-center justify-center gap-2 text-sm shadow-sm">
+            <i class="fa-solid fa-arrow-down text-xs"></i> 導出檔案
+          </button>
+          <button onclick="triggerPrint()" class="bg-forest-700 hover:bg-forest-800 text-white font-medium py-2.5 rounded-xl transition flex items-center justify-center gap-2 text-sm shadow-sm">
+            <i class="fa-solid fa-print text-xs"></i> 列印 / 存成 PDF
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 頁尾聲明 -->
+    <div class="no-print flex flex-col sm:flex-row items-center justify-between text-xs text-gray-400 gap-1 px-1">
+      <span>讓每一種商品編號都有自己的包裝標籤。</span>
+      <span>本機處理 · 不上傳私密資料</span>
+    </div>
+
+  </div>
+
+  <!-- 列印專用隱藏區域 (多頁 A4 輸出) -->
+  <div id="printContainer" class="hidden print-container"></div>
+
+  <script>
+    // 紙張尺寸數據表 (單位: mm)
+    const PAPER_SIZES = {
+      a5: { name: "A5", w: 148, h: 210 },
+      a4: { name: "A4", w: 210, h: 297 },
+      a3: { name: "A3", w: 297, h: 420 }
+    };
+
+    // 預設示範資料 (含可選底色與邊框色)
+    const DEFAULT_PRODUCTS = [
+      { name: "針筒5CC", code: "4001034", bgColor: "#ffffff", borderColor: "#d1d5db" },
+      { name: "針筒20CC", code: "401035", bgColor: "#ffffff", borderColor: "#d1d5db" },
+      { name: "針筒50CC", code: "401036", bgColor: "#ffffff", borderColor: "#d1d5db" },
+      { name: "灌食餵針筒50CC", code: "611054", bgColor: "#fefce8", borderColor: "#eab308" },
+      { name: "華顆15%真顆洗劑", code: "1063002", bgColor: "#ffffff", borderColor: "#d1d5db" },
+      { name: "華顆30%一秒通洗劑", code: "482007", bgColor: "#fef2f2", borderColor: "#ef4444" },
+      { name: "好氣5CC", code: "4001040", bgColor: "#ffffff", borderColor: "#d1d5db" },
+      { name: "好氣20CC", code: "401041", bgColor: "#ffffff", borderColor: "#d1d5db" },
+      { name: "好氣50CC", code: "401042", bgColor: "#ffffff", borderColor: "#d1d5db" }
+    ];
+
+    let products = [];
+    let currentPage = 1;
+
+    window.onload = function() {
+      loadProducts();
+      renderProductListDOM();
+      renderPreview();
+
+      window.addEventListener('resize', updatePreviewScale);
+      window.addEventListener('orientationchange', updatePreviewScale);
+    };
+
+    // 複製顏色色號至剪貼簿
+    function copyColorCode(hexCode) {
+      if (!hexCode) return;
+      const tempInput = document.createElement("input");
+      tempInput.value = hexCode;
+      document.body.appendChild(tempInput);
+      tempInput.select();
+      document.execCommand("copy");
+      document.body.removeChild(tempInput);
+      showNotice(`已複製色號：${hexCode}`);
+    }
+
+    // 全局顏色快捷設定
+    function setGlobalBg(color) {
+      const el = document.getElementById("globalBgColor");
+      if (el) el.value = color;
+      const hexEl = document.getElementById("globalBgColorHex");
+      if (hexEl) hexEl.value = color.toUpperCase();
+      renderPreview();
+    }
+
+    function setGlobalBorder(color) {
+      const el = document.getElementById("globalBorderColor");
+      if (el) el.value = color;
+      const hexEl = document.getElementById("globalBorderColorHex");
+      if (hexEl) hexEl.value = color.toUpperCase();
+      renderPreview();
+    }
+
+    // 全局與個別顏色 Synchronize 處理函式
+    function syncGlobalColor(type, colorVal) {
+      const hexInput = document.getElementById(`global${type}ColorHex`);
+      if (hexInput) hexInput.value = colorVal.toUpperCase();
+      renderPreview();
+    }
+
+    function handleGlobalHexInput(type, hexVal) {
+      let formatted = hexVal.trim();
+      if (!formatted.startsWith('#')) formatted = '#' + formatted;
+      if (/^#[0-9A-Fa-f]{6}$/.test(formatted)) {
+        const picker = document.getElementById(`global${type}Color`);
+        if (picker) picker.value = formatted;
+        renderPreview();
+      }
+    }
+
+    function syncNewColor(pickerId, hexVal) {
+      let formatted = hexVal.trim();
+      if (!formatted.startsWith('#')) formatted = '#' + formatted;
+      if (/^#[0-9A-Fa-f]{6}$/.test(formatted)) {
+        const picker = document.getElementById(pickerId);
+        if (picker) picker.value = formatted;
+      }
+    }
+
+    function updateItemColorPicker(index, field, value) {
+      if (products[index]) {
+        products[index][field] = value;
+        saveProducts();
+        renderProductListDOM();
+        renderPreview();
+      }
+    }
+
+    function updateItemFromHexInput(index, field, hexVal) {
+      let formatted = hexVal.trim();
+      if (!formatted.startsWith('#')) formatted = '#' + formatted;
+      if (/^#[0-9A-Fa-f]{6}$/.test(formatted)) {
+        products[index][field] = formatted;
+        saveProducts();
+        renderPreview();
+      }
+    }
+
+    // 一鍵將全局底色套用到所有商品
+    function applyBgToAll() {
+      const color = document.getElementById("globalBgColor").value;
+      products.forEach(p => p.bgColor = color);
+      saveProducts();
+      renderProductListDOM();
+      renderPreview();
+      showNotice(`已將底色 ${color} 套用到所有商品`);
+    }
+
+    // 一鍵將全局邊框套用到所有商品
+    function applyBorderToAll() {
+      const color = document.getElementById("globalBorderColor").value;
+      products.forEach(p => p.borderColor = color);
+      saveProducts();
+      renderProductListDOM();
+      renderPreview();
+      showNotice(`已將邊框色 ${color} 套用到所有商品`);
+    }
+
+    // Toast 浮動通知訊息機制
+    function showNotice(msg) {
+      let toast = document.getElementById("toastNotice");
+      if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "toastNotice";
+        toast.className = "fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-gray-900/90 text-white text-xs px-4 py-2.5 rounded-xl shadow-lg z-50 transition-opacity duration-300 pointer-events-none opacity-0";
+        document.body.appendChild(toast);
+      }
+      toast.innerText = msg;
+      toast.classList.remove("opacity-0");
+      toast.classList.add("opacity-100");
+      
+      clearTimeout(window.toastTimer);
+      window.toastTimer = setTimeout(() => {
+        toast.classList.remove("opacity-100");
+        toast.classList.add("opacity-0");
+      }, 3000);
+    }
+
+    // 讀取 LocalStorage 資料
+    function loadProducts() {
+      try {
+        const saved = localStorage.getItem("barcode_products_data");
+        if (saved) {
+          products = JSON.parse(saved);
+        } else {
+          products = JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));
+        }
+      } catch (e) {
+        console.error(e);
+        products = JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));
+      }
+    }
+
+    // 儲存至 LocalStorage
+    function saveProducts() {
+      try {
+        localStorage.setItem("barcode_products_data", JSON.stringify(products));
+      } catch (e) {
+        console.error(e);
+      }
+      updateCountBadge();
+    }
+
+    function updateCountBadge() {
+      const badge = document.getElementById("itemCountBadge");
+      if (badge) badge.innerText = `${products.length} 項`;
+    }
+
+    // 還原預設資料
+    function resetDefaults() {
+      products = JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));
+      saveProducts();
+      renderProductListDOM();
+      renderPreview();
+      showNotice("已還原預設商品資料");
+    }
+
+    // 渲染商品清單 DOM
+    function renderProductListDOM() {
+      const listEl = document.getElementById("productList");
+      if (!listEl) return;
+      listEl.innerHTML = "";
+
+      const globalBg = document.getElementById("globalBgColor") ? document.getElementById("globalBgColor").value : "#ffffff";
+      const globalBorder = document.getElementById("globalBorderColor") ? document.getElementById("globalBorderColor").value : "#d1d5db";
+
+      products.forEach((item, index) => {
+        const itemBg = item.bgColor || globalBg;
+        const itemBorder = item.borderColor || globalBorder;
+
+        const row = document.createElement("div");
+        row.className = "grid grid-cols-12 gap-2 items-center py-1 border-b border-gray-100 text-xs";
+        row.innerHTML = `
+          <div class="col-span-4">
+            <input type="text" value="${escapeHtml(item.name)}" 
+              oninput="updateItem(${index}, 'name', this.value)"
+              class="w-full border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-forest-700 bg-gray-50/50 focus:bg-white transition" placeholder="商品名稱">
+          </div>
+          <div class="col-span-4">
+            <input type="text" value="${escapeHtml(item.code)}" 
+              oninput="updateItem(${index}, 'code', this.value)"
+              class="w-full border border-gray-200 rounded-lg px-2.5 py-1 text-xs font-mono focus:outline-none focus:border-forest-700 bg-gray-50/50 focus:bg-white transition" placeholder="編號">
+          </div>
+          <div class="col-span-3 flex items-center justify-center gap-1 flex-wrap">
+            <div class="flex items-center gap-0.5">
+              <input type="color" value="${itemBg}" title="標籤底色"
+                onchange="updateItemColorPicker(${index}, 'bgColor', this.value)"
+                class="w-5 h-5 rounded cursor-pointer border border-gray-200 p-0">
+              <input type="text" value="${itemBg.toUpperCase()}" onfocus="this.select()"
+                oninput="updateItemFromHexInput(${index}, 'bgColor', this.value)"
+                class="w-14 border border-gray-200 rounded px-1 py-0.5 text-[10px] font-mono uppercase bg-white text-center focus:outline-none focus:border-forest-700" title="點擊自動全選，可直接複製/貼上 HEX 色號">
+            </div>
+            <div class="flex items-center gap-0.5">
+              <input type="color" value="${itemBorder}" title="邊框顏色"
+                onchange="updateItemColorPicker(${index}, 'borderColor', this.value)"
+                class="w-5 h-5 rounded cursor-pointer border border-gray-200 p-0">
+              <input type="text" value="${itemBorder.toUpperCase()}" onfocus="this.select()"
+                oninput="updateItemFromHexInput(${index}, 'borderColor', this.value)"
+                class="w-14 border border-gray-200 rounded px-1 py-0.5 text-[10px] font-mono uppercase bg-white text-center focus:outline-none focus:border-forest-700" title="點擊自動全選，可直接複製/貼上 HEX 色號">
+            </div>
+            <button onclick="copyColorCode('${itemBg}')" class="text-gray-400 hover:text-gray-600 p-0.5" title="複製底色碼">
+              <i class="fa-regular fa-copy text-[10px]"></i>
+            </button>
+          </div>
+          <div class="col-span-1 text-center">
+            <button onclick="removeItem(${index})" class="text-gray-400 hover:text-red-500 p-1 transition" title="刪除">
+              <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+          </div>
+        `;
+        listEl.appendChild(row);
+      });
+
+      updateCountBadge();
+    }
+
+    // 更新單筆商品資料
+    function updateItem(index, field, value) {
+      if (products[index]) {
+        products[index][field] = value;
+        saveProducts();
+        renderPreview();
+      }
+    }
+
+    // 移除單筆商品
+    function removeItem(index) {
+      products.splice(index, 1);
+      saveProducts();
+      renderProductListDOM();
+      renderPreview();
+    }
+
+    // 新增商品品項
+    function addItem() {
+      const nameEl = document.getElementById("newName");
+      const codeEl = document.getElementById("newCode");
+      const bgEl = document.getElementById("newBgColor");
+      const borderEl = document.getElementById("newBorderColor");
+
+      const name = nameEl ? nameEl.value.trim() : "";
+      let code = codeEl ? codeEl.value.trim() : "";
+      const bgColor = bgEl ? bgEl.value : "#ffffff";
+      const borderColor = borderEl ? borderEl.value : "#d1d5db";
+
+      if (!name && !code) {
+        showNotice("請輸入商品名稱或編號");
+        return;
+      }
+
+      if (name.includes("_") && !code) {
+        const parts = name.split("_");
+        products.push({ name: parts[0], code: parts.slice(1).join("_"), bgColor, borderColor });
+      } else {
+        products.push({ name: name || "新商品", code: code, bgColor, borderColor });
+      }
+
+      if (nameEl) nameEl.value = "";
+      if (codeEl) codeEl.value = "";
+
+      saveProducts();
+      renderProductListDOM();
+      renderPreview();
+      if (nameEl) nameEl.focus();
+    }
+
+    // 開啟 / 關閉 批次編輯面板
+    function toggleBatchEdit() {
+      const container = document.getElementById("batchEditContainer");
+      const textarea = document.getElementById("batchEditTextarea");
+      if (!container || !textarea) return;
+
+      if (container.classList.contains("hidden")) {
+        textarea.value = products.map(p => `${p.name}_${p.code}_${p.bgColor || ''}_${p.borderColor || ''}`).join("\n");
+        container.classList.remove("hidden");
+        textarea.focus();
+      } else {
+        container.classList.add("hidden");
+      }
+    }
+
+    // 儲存批次編輯
+    function saveBatchEdit() {
+      const textarea = document.getElementById("batchEditTextarea");
+      if (!textarea) return;
+
+      const lines = textarea.value.split("\n");
+      const newProducts = [];
+
+      lines.forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        
+        const parts = trimmed.split("_");
+        let name = parts[0] || "";
+        let code = parts[1] || "";
+        let bgColor = parts[2] || "#ffffff";
+        let borderColor = parts[3] || "#d1d5db";
+
+        if (parts.length === 1) {
+          name = trimmed;
+          code = "";
+        }
+
+        newProducts.push({ name, code, bgColor, borderColor });
+      });
+
+      if (newProducts.length > 0) {
+        products = newProducts;
+        saveProducts();
+        renderProductListDOM();
+        renderPreview();
+        toggleBatchEdit();
+        showNotice(`已更新 ${products.length} 項商品`);
+      } else {
+        showNotice("請輸入有效的商品格式（例如：針筒5CC_4001034）");
+      }
+    }
+
+    // 匯入 TXT 檔案
+    function importTXT(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const text = e.target.result;
+        const lines = text.split(/\r?\n/);
+        const imported = [];
+
+        lines.forEach(line => {
+          const trimmed = line.trim();
+          if (!trimmed) return;
+
+          const parts = trimmed.split("_");
+          let name = parts[0] || "";
+          let code = parts[1] || "";
+          let bgColor = parts[2] || "#ffffff";
+          let borderColor = parts[3] || "#d1d5db";
+
+          if (parts.length === 1) {
+            name = trimmed;
+            code = "";
+          }
+
+          imported.push({ name, code, bgColor, borderColor });
+        });
+
+        if (imported.length > 0) {
+          products = imported;
+          saveProducts();
+          renderProductListDOM();
+          renderPreview();
+          showNotice(`已成功匯入 ${imported.length} 項商品`);
+        } else {
+          showNotice("檔案內無有效商品資料");
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    }
+
+    // 儲存為 TXT 檔 (支援純文字 or 完整樣式備份)
+    function exportTXT(type = 'full') {
+      if (products.length === 0) {
+        showNotice("目前尚無商品資料可導出");
+        return;
+      }
+      let lines = [];
+      let filename = "商品條碼清單.txt";
+
+      if (type === 'simple') {
+        lines = products.map(p => `${p.name}_${p.code}`);
+        filename = "商品條碼清單_純文字.txt";
+      } else {
+        lines = products.map(p => `${p.name}_${p.code}_${p.bgColor || '#ffffff'}_${p.borderColor || '#d1d5db'}`);
+        filename = "商品條碼清單_完整備份.txt";
+      }
+
+      const blob = new Blob([lines.join("\r\n")], { type: "text/plain;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      showNotice(type === 'simple' ? "已匯出純文字檔 (名稱_編號)" : "已匯出完整樣式備份檔 (含色彩設定)");
+    }
+
+    // 分頁切換
+    function changePage(delta) {
+      currentPage += delta;
+      renderPreview();
+    }
+
+    // 手機/狹窄螢幕 預覽自動縮放計算
+    function updatePreviewScale() {
+      const container = document.getElementById("previewScaleContainer");
+      const outer = document.getElementById("previewScaleOuter");
+      const sheet = document.getElementById("previewSheet");
+      const ratioText = document.getElementById("scaleRatioText");
+
+      if (!container || !outer || !sheet) return;
+
+      const containerWidth = container.clientWidth - 16;
+      const sheetWidth = sheet.offsetWidth;
+
+      if (containerWidth < sheetWidth) {
+        const scale = containerWidth / sheetWidth;
+        outer.style.transform = `scale(${scale})`;
+        outer.style.transformOrigin = "top center";
+        
+        const scaledHeight = sheet.offsetHeight * scale;
+        container.style.height = `${scaledHeight}px`;
+        
+        if (ratioText) ratioText.innerText = `視窗縮放 ${Math.round(scale * 100)}%`;
+      } else {
+        outer.style.transform = "none";
+        container.style.height = "auto";
+        if (ratioText) ratioText.innerText = "100% 原尺寸";
+      }
+    }
+
+    // 計算適合細胞儲存格的 QR Code 動態大小
+    function calculateOptimalQrSize(widthMM, heightMM, cols, rows) {
+      const availableW = ((widthMM - 16) / cols) * 3.78; // 扣除紙張 padding (16mm) 轉 px
+      const availableH = ((heightMM - 16) / rows) * 3.78;
+      
+      const sizeByH = availableH - 16; // 扣除儲存格 padding 與底部編號字型
+      const sizeByW = availableW * 0.42; // QR Code 約佔儲存格寬度 42%
+      
+      const optimal = Math.min(sizeByH, sizeByW);
+      return Math.max(16, Math.min(48, Math.floor(optimal)));
+    }
+
+    // 核心渲染預覽頁面
+    function renderPreview() {
+      const paperKey = document.getElementById("paperSize").value;
+      const orientation = document.getElementById("orientation").value;
+      const cols = parseInt(document.getElementById("colsCount").value);
+      const rows = parseInt(document.getElementById("rowsCount").value);
+      const fontSizeEl = document.getElementById("fontSize");
+      const fontSize = fontSizeEl ? fontSizeEl.value : "12pt";
+      const borderStyleVal = document.getElementById("borderStyleSelect") ? document.getElementById("borderStyleSelect").value : "dashed";
+
+      const globalBg = document.getElementById("globalBgColor") ? document.getElementById("globalBgColor").value : "#ffffff";
+      const globalBorder = document.getElementById("globalBorderColor") ? document.getElementById("globalBorderColor").value : "#d1d5db";
+
+      const paperInfo = PAPER_SIZES[paperKey] || PAPER_SIZES.a4;
+      const isLandscape = (orientation === "landscape");
+      const widthMM = isLandscape ? paperInfo.h : paperInfo.w;
+      const heightMM = isLandscape ? paperInfo.w : paperInfo.h;
+
+      const previewSheet = document.getElementById("previewSheet");
+      const gridEl = document.getElementById("previewGrid");
+
+      // 設定精確紙張動態尺寸與邊界
+      previewSheet.style.width = `${widthMM}mm`;
+      previewSheet.style.height = `${heightMM}mm`;
+      previewSheet.style.boxSizing = "border-box";
+      previewSheet.style.padding = "8mm";
+      previewSheet.style.overflow = "hidden";
+
+      document.getElementById("canvasInfo").innerText = `${paperInfo.name} ${isLandscape ? '橫式' : '直式'}`;
+
+      // 更新 @page print 樣式
+      const printStyleEl = document.getElementById("dynamicPrintStyle");
+      if (printStyleEl) {
+        printStyleEl.innerHTML = `@page { size: ${paperInfo.name.toLowerCase()} ${orientation}; margin: 0; }`;
+      }
+
+      // 計算分頁數
+      const itemsPerPage = cols * rows;
+      const totalPages = Math.max(1, Math.ceil(products.length / itemsPerPage));
+      if (currentPage > totalPages) currentPage = totalPages;
+
+      document.getElementById("pageIndicator").innerText = `第 ${currentPage}/${totalPages} 頁`;
+      document.getElementById("totalSummary").innerText = `${products.length} 個條碼 · ${totalPages} 張紙 (${paperInfo.name})`;
+
+      document.getElementById("prevPageBtn").disabled = (currentPage <= 1);
+      document.getElementById("nextPageBtn").disabled = (currentPage >= totalPages);
+
+      // 動態調整網格間距 (高排數時自動微調間距)
+      let gapClass = "gap-1.5";
+      if (rows >= 12) gapClass = "gap-1";
+      if (rows >= 16) gapClass = "gap-0.5";
+
+      gridEl.className = `grid ${gapClass} h-full w-full overflow-hidden`;
+      gridEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+      gridEl.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+
+      gridEl.innerHTML = "";
+
+      const startIndex = (currentPage - 1) * itemsPerPage;
+      const pageItems = products.slice(startIndex, startIndex + itemsPerPage);
+
+      let borderClass = "border border-dashed";
+      if (borderStyleVal === "none") borderClass = "border-0";
+      if (borderStyleVal === "solid") borderClass = "border border-solid";
+
+      const qrSize = calculateOptimalQrSize(widthMM, heightMM, cols, rows);
+
+      // 渲染標籤儲存格
+      for (let i = 0; i < itemsPerPage; i++) {
+        const item = pageItems[i];
+        const cell = document.createElement("div");
+
+        cell.className = `p-1 rounded flex items-center justify-between overflow-hidden box-border ${borderClass}`;
+
+        if (item) {
+          const bg = item.bgColor || globalBg;
+          const borderCol = item.borderColor || globalBorder;
+
+          cell.style.backgroundColor = bg;
+          if (borderStyleVal !== "none") {
+            cell.style.borderColor = borderCol;
+          }
+
+          const qrId = `qr-preview-${currentPage}-${i}`;
+          let qrPayload = item.code || '';
+          if (qrPayload.includes('_')) {
+            qrPayload = qrPayload.split('_').pop().trim();
+          }
+          if (!qrPayload) qrPayload = item.name;
+
+          cell.innerHTML = `
+            <div class="flex-1 min-w-0 pr-1 flex items-center h-full overflow-hidden">
+              <span class="font-bold text-gray-900 leading-snug break-words overflow-hidden text-ellipsis max-h-full" style="font-size: ${fontSize};">
+                ${escapeHtml(item.name)}
+              </span>
+            </div>
+            <div class="shrink-0 flex flex-col items-center justify-center pl-0.5 max-h-full">
+              <div id="${qrId}" class="qr-box flex items-center justify-center"></div>
+              <span class="font-mono text-gray-600 text-[8px] sm:text-[9px] tracking-tight text-center leading-none mt-0.5 max-w-[55px] truncate">
+                ${escapeHtml(item.code)}
+              </span>
+            </div>
+          `;
+          gridEl.appendChild(cell);
+
+          const qrTarget = document.getElementById(qrId);
+          if (qrTarget && qrPayload) {
+            qrTarget.innerHTML = "";
+            new QRCode(qrTarget, {
+              text: qrPayload,
+              width: qrSize,
+              height: qrSize,
+              correctLevel: QRCode.CorrectLevel.M
+            });
+          }
+        } else {
+          cell.style.backgroundColor = "#ffffff";
+          cell.style.borderColor = "transparent";
+          cell.innerHTML = `&nbsp;`;
+          gridEl.appendChild(cell);
+        }
+      }
+
+      setTimeout(updatePreviewScale, 10);
+    }
+
+    // 依據下拉選單匯出 PNG / JPG 或 PDF 檔案
+    async function downloadFile() {
+      const format = document.getElementById("exportFormat").value;
+      if (format === "pdf") {
+        await exportMultiPagePDF();
+      } else {
+        await exportImage(format);
+      }
+    }
+
+    // 匯出當前頁面為圖片 (.png / .jpg)
+    async function exportImage(format = 'png') {
+      const previewSheet = document.getElementById("previewSheet");
+      if (!previewSheet) return;
+
+      showNotice("正在渲染高解析度圖片...");
+
+      try {
+        const canvas = await html2canvas(previewSheet, {
+          scale: 3, // 高清 300 DPI
+          useCORS: true,
+          backgroundColor: "#ffffff"
+        });
+
+        const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/png';
+        const ext = format === 'jpg' ? 'jpg' : 'png';
+        const dataUrl = canvas.toDataURL(mimeType, 0.95);
+
+        const a = document.createElement("a");
+        a.download = `商品條碼標籤_第${currentPage}頁.${ext}`;
+        a.href = dataUrl;
+        a.click();
+
+        showNotice(`已成功下載第 ${currentPage} 頁 ${ext.toUpperCase()} 圖片`);
+      } catch (err) {
+        console.error(err);
+        showNotice("圖片產生失敗，請稍後重試");
+      }
+    }
+
+    // 利用 jsPDF + html2canvas 導出多頁 PDF
+    async function exportMultiPagePDF() {
+      showNotice("正在產生 PDF 文件，請稍候...");
+
+      const { jsPDF } = window.jspdf;
+      const paperKey = document.getElementById("paperSize").value;
+      const orientation = document.getElementById("orientation").value;
+      const cols = parseInt(document.getElementById("colsCount").value);
+      const rows = parseInt(document.getElementById("rowsCount").value);
+      const fontSizeEl = document.getElementById("fontSize");
+      const fontSize = fontSizeEl ? fontSizeEl.value : "12pt";
+      const borderStyleVal = document.getElementById("borderStyleSelect") ? document.getElementById("borderStyleSelect").value : "dashed";
+
+      const globalBg = document.getElementById("globalBgColor") ? document.getElementById("globalBgColor").value : "#ffffff";
+      const globalBorder = document.getElementById("globalBorderColor") ? document.getElementById("globalBorderColor").value : "#d1d5db";
+
+      const paperInfo = PAPER_SIZES[paperKey] || PAPER_SIZES.a4;
+      const isLandscape = (orientation === "landscape");
+      const widthMM = isLandscape ? paperInfo.h : paperInfo.w;
+      const heightMM = isLandscape ? paperInfo.w : paperInfo.h;
+
+      const itemsPerPage = cols * rows;
+      const totalPages = Math.max(1, Math.ceil(products.length / itemsPerPage));
+
+      const pdf = new jsPDF({
+        orientation: orientation,
+        unit: 'mm',
+        format: paperKey
+      });
+
+      let borderClass = "border border-dashed";
+      if (borderStyleVal === "none") borderClass = "border-0";
+      if (borderStyleVal === "solid") borderClass = "border border-solid";
+
+      let gapClass = "gap-1.5";
+      if (rows >= 12) gapClass = "gap-1";
+      if (rows >= 16) gapClass = "gap-0.5";
+
+      const qrSize = calculateOptimalQrSize(widthMM, heightMM, cols, rows);
+
+      // 建立隱藏的渲染容器
+      const tempContainer = document.createElement("div");
+      tempContainer.style.position = "absolute";
+      tempContainer.style.left = "-9999px";
+      tempContainer.style.top = "-9999px";
+      document.body.appendChild(tempContainer);
+
+      for (let p = 0; p < totalPages; p++) {
+        tempContainer.innerHTML = "";
+        
+        const tempSheet = document.createElement("div");
+        tempSheet.className = "bg-white";
+        tempSheet.style.width = `${widthMM}mm`;
+        tempSheet.style.height = `${heightMM}mm`;
+        tempSheet.style.padding = "8mm";
+        tempSheet.style.boxSizing = "border-box";
+        tempSheet.style.overflow = "hidden";
+
+        const grid = document.createElement("div");
+        grid.className = `grid ${gapClass} h-full w-full overflow-hidden`;
+        grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+        grid.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+
+        const startIndex = p * itemsPerPage;
+        const pageItems = products.slice(startIndex, startIndex + itemsPerPage);
+
+        for (let i = 0; i < itemsPerPage; i++) {
+          const item = pageItems[i];
+          const cell = document.createElement("div");
+          cell.className = `p-1 rounded flex items-center justify-between overflow-hidden box-border ${borderClass}`;
+
+          if (item) {
+            const bg = item.bgColor || globalBg;
+            const borderCol = item.borderColor || globalBorder;
+
+            cell.style.backgroundColor = bg;
+            if (borderStyleVal !== "none") {
+              cell.style.borderColor = borderCol;
+            }
+
+            const pdfQrId = `qr-pdf-${p}-${i}`;
+            let qrPayload = item.code || '';
+            if (qrPayload.includes('_')) {
+              qrPayload = qrPayload.split('_').pop().trim();
+            }
+            if (!qrPayload) qrPayload = item.name;
+
+            cell.innerHTML = `
+              <div class="flex-1 min-w-0 pr-1 flex items-center h-full overflow-hidden">
+                <span class="font-bold text-gray-900 leading-snug break-words overflow-hidden text-ellipsis max-h-full" style="font-size: ${fontSize};">
+                  ${escapeHtml(item.name)}
+                </span>
+              </div>
+              <div class="shrink-0 flex flex-col items-center justify-center pl-0.5 max-h-full">
+                <div id="${pdfQrId}" class="qr-box flex items-center justify-center"></div>
+                <span class="font-mono text-gray-600 text-[8px] sm:text-[9px] tracking-tight text-center leading-none mt-0.5 max-w-[55px] truncate">
+                  ${escapeHtml(item.code)}
+                </span>
+              </div>
+            `;
+            grid.appendChild(cell);
+
+            setTimeout(() => {
+              const target = document.getElementById(pdfQrId);
+              if (target && qrPayload) {
+                new QRCode(target, {
+                  text: qrPayload,
+                  width: qrSize,
+                  height: qrSize,
+                  correctLevel: QRCode.CorrectLevel.M
+                });
+              }
+            }, 0);
+          } else {
+            cell.style.backgroundColor = "#ffffff";
+            cell.style.borderColor = "transparent";
+            cell.innerHTML = `&nbsp;`;
+            grid.appendChild(cell);
+          }
+        }
+
+        tempSheet.appendChild(grid);
+        tempContainer.appendChild(tempSheet);
+
+        await new Promise(r => setTimeout(r, 100));
+
+        const canvas = await html2canvas(tempSheet, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff"
+        });
+
+        const imgData = canvas.toDataURL("image/jpeg", 0.95);
+        if (p > 0) pdf.addPage(paperKey, orientation);
+        pdf.addImage(imgData, 'JPEG', 0, 0, widthMM, heightMM);
+      }
+
+      document.body.removeChild(tempContainer);
+      pdf.save(`商品條碼標籤_${paperInfo.name}.pdf`);
+      showNotice("PDF 檔案下載完成");
+    }
+
+    // 觸發多頁列印 / 存成 PDF (瀏覽器原生)
+    function triggerPrint() {
+      const paperKey = document.getElementById("paperSize").value;
+      const orientation = document.getElementById("orientation").value;
+      const cols = parseInt(document.getElementById("colsCount").value);
+      const rows = parseInt(document.getElementById("rowsCount").value);
+      const fontSizeEl = document.getElementById("fontSize");
+      const fontSize = fontSizeEl ? fontSizeEl.value : "12pt";
+      const borderStyleVal = document.getElementById("borderStyleSelect") ? document.getElementById("borderStyleSelect").value : "dashed";
+
+      const globalBg = document.getElementById("globalBgColor") ? document.getElementById("globalBgColor").value : "#ffffff";
+      const globalBorder = document.getElementById("globalBorderColor") ? document.getElementById("globalBorderColor").value : "#d1d5db";
+
+      const paperInfo = PAPER_SIZES[paperKey] || PAPER_SIZES.a4;
+      const isLandscape = (orientation === "landscape");
+      const widthMM = isLandscape ? paperInfo.h : paperInfo.w;
+      const heightMM = isLandscape ? paperInfo.w : paperInfo.h;
+
+      const printContainer = document.getElementById("printContainer");
+      printContainer.innerHTML = "";
+
+      const itemsPerPage = cols * rows;
+      const totalPages = Math.max(1, Math.ceil(products.length / itemsPerPage));
+
+      let borderClass = "border border-dashed";
+      if (borderStyleVal === "none") borderClass = "border-0";
+      if (borderStyleVal === "solid") borderClass = "border border-solid";
+
+      let gapClass = "gap-1.5";
+      if (rows >= 12) gapClass = "gap-1";
+      if (rows >= 16) gapClass = "gap-0.5";
+
+      const qrSize = calculateOptimalQrSize(widthMM, heightMM, cols, rows);
+
+      for (let p = 0; p < totalPages; p++) {
+        const pageSheet = document.createElement("div");
+        pageSheet.className = "print-page bg-white box-border overflow-hidden";
+        pageSheet.style.width = `${widthMM}mm`;
+        pageSheet.style.height = `${heightMM}mm`;
+        pageSheet.style.padding = "8mm";
+
+        const grid = document.createElement("div");
+        grid.className = `grid ${gapClass} h-full w-full overflow-hidden`;
+        grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+        grid.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+
+        const startIndex = p * itemsPerPage;
+        const pageItems = products.slice(startIndex, startIndex + itemsPerPage);
+
+        for (let i = 0; i < itemsPerPage; i++) {
+          const item = pageItems[i];
+          const cell = document.createElement("div");
+
+          cell.className = `p-1 rounded flex items-center justify-between overflow-hidden box-border ${borderClass}`;
+
+          if (item) {
+            const bg = item.bgColor || globalBg;
+            const borderCol = item.borderColor || globalBorder;
+
+            cell.style.backgroundColor = bg;
+            if (borderStyleVal !== "none") {
+              cell.style.borderColor = borderCol;
+            }
+
+            const printQrId = `qr-print-${p}-${i}`;
+            let qrPayload = item.code || '';
+            if (qrPayload.includes('_')) {
+              qrPayload = qrPayload.split('_').pop().trim();
+            }
+            if (!qrPayload) qrPayload = item.name;
+
+            cell.innerHTML = `
+              <div class="flex-1 min-w-0 pr-1 flex items-center h-full overflow-hidden">
+                <span class="font-bold text-gray-900 leading-snug break-words overflow-hidden text-ellipsis max-h-full" style="font-size: ${fontSize};">
+                  ${escapeHtml(item.name)}
+                </span>
+              </div>
+              <div class="shrink-0 flex flex-col items-center justify-center pl-0.5 max-h-full">
+                <div id="${printQrId}" class="qr-box flex items-center justify-center"></div>
+                <span class="font-mono text-gray-600 text-[8px] sm:text-[9px] tracking-tight text-center leading-none mt-0.5 max-w-[55px] truncate">
+                  ${escapeHtml(item.code)}
+                </span>
+              </div>
+            `;
+            grid.appendChild(cell);
+
+            setTimeout(() => {
+              const target = document.getElementById(printQrId);
+              if (target && qrPayload) {
+                new QRCode(target, {
+                  text: qrPayload,
+                  width: qrSize,
+                  height: qrSize,
+                  correctLevel: QRCode.CorrectLevel.M
+                });
+              }
+            }, 10);
+          } else {
+            cell.style.backgroundColor = "#ffffff";
+            cell.style.borderColor = "transparent";
+            cell.innerHTML = `&nbsp;`;
+            grid.appendChild(cell);
+          }
+        }
+
+        pageSheet.appendChild(grid);
+        printContainer.appendChild(pageSheet);
+      }
+
+      setTimeout(() => {
+        window.print();
+      }, 300);
+    }
+
+    // HTML 轉義防護
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
